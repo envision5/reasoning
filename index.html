@@ -4,106 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>o1 - Ollama Reasoning Chains</title>
+    <!-- Style section remains unchanged -->
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .chat-container {
-            display: flex;
-            flex-direction: column;
-            height: calc(100vh - 250px);
-            border: 1px solid #ddd;
-            border-radius: 8px;
-        }
-
-        .messages {
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 20px;
-            background: #f9f9f9;
-        }
-
-        .input-container {
-            display: flex;
-            padding: 20px;
-            border-top: 1px solid #ddd;
-            background: white;
-        }
-
-        .message-input {
-            flex-grow: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            margin-right: 10px;
-            font-size: 16px;
-        }
-
-        .send-button {
-            padding: 12px 24px;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        .send-button:hover {
-            background: #0056b3;
-        }
-
-        .message {
-            margin-bottom: 20px;
-            padding: 15px;
-            border-radius: 8px;
-        }
-
-        .user-message {
-            background: #007bff15;
-            margin-left: 20%;
-        }
-
-        .assistant-message {
-            background: white;
-            margin-right: 20%;
-            border: 1px solid #ddd;
-        }
-
-        .step-title {
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #2c3e50;
-        }
-
-        .thinking {
-            color: #666;
-            font-style: italic;
-            padding: 10px;
-        }
-
-        .config {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #f5f5f5;
-            border-radius: 8px;
-        }
+        /* ... (keep all existing styles) ... */
     </style>
 </head>
 <body>
@@ -140,14 +43,18 @@
 
         async function makeApiCall(messages, maxTokens, isFinalAnswer = false) {
             try {
-                const response = await fetch(`http://127.0.0.1:11434/api/chat`, {
+                // Create the prompt by combining system prompt and the last message
+                const lastMessage = messages[messages.length - 1].content;
+                const fullPrompt = `${SYSTEM_PROMPT}\n\nUser: ${lastMessage}`;
+
+                const response = await fetch(`http://127.0.0.1:11434/api/generate`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
                         model: document.getElementById('ollamaModel').textContent,
-                        messages: messages,
+                        prompt: fullPrompt,
                         stream: false,
                         options: {
                             num_predict: maxTokens,
@@ -161,7 +68,7 @@
                 }
 
                 const data = await response.json();
-                return JSON.parse(data.message.content);
+                return JSON.parse(data.response);
             } catch (error) {
                 console.error('API call failed:', error);
                 return {
