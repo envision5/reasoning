@@ -141,7 +141,7 @@
 
         async function makeApiCall(messages, maxTokens, isFinalAnswer = false) {
             try {
-                const response = await fetch(`${document.getElementById('ollamaUrl').textContent}/api/chat`, {
+                const response = await fetch(`https://cors-anywhere.herokuapp.com/${document.getElementById('ollamaUrl').textContent}/api/chat`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
