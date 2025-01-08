@@ -6,7 +6,105 @@
     <title>o1 - Ollama Reasoning Chains</title>
     <!-- Style section remains unchanged -->
     <style>
-        /* ... (keep all existing styles) ... */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 250px);
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+
+        .messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f9f9f9;
+        }
+
+        .input-container {
+            display: flex;
+            padding: 20px;
+            border-top: 1px solid #ddd;
+            background: white;
+        }
+
+        .message-input {
+            flex-grow: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 16px;
+        }
+
+        .send-button {
+            padding: 12px 24px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .send-button:hover {
+            background: #0056b3;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .user-message {
+            background: #007bff15;
+            margin-left: 20%;
+        }
+
+        .assistant-message {
+            background: white;
+            margin-right: 20%;
+            border: 1px solid #ddd;
+        }
+
+        .step-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+
+        .thinking {
+            color: #666;
+            font-style: italic;
+            padding: 10px;
+        }
+
+        .config {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body>
@@ -17,132 +115,154 @@
 
     <div class="config">
         <h3>Current Configuration:</h3>
-        <p>Ollama URL: <code id="ollamaUrl">http://127.0.0.1:11434</code></p>
-        <p>Ollama Model: <code id="ollamaModel">llama2</code></p>
+        <p>Ollama URL: <code id="ollamaUrl">http://127.0.0.1:11434/api</code></p>
+        <p>Ollama Model: <code id="ollamaModel">mistral</code></p>
     </div>
 
     <div class="chat-container">
         <div class="messages" id="messages"></div>
         <div class="input-container">
             <input type="text" class="message-input" id="userInput" 
-                   placeholder="e.g., How many 'R's are in the word strawberry?" 
-                   onkeypress="if(event.key === 'Enter') sendMessage()">
-            <button class="send-button" onclick="sendMessage()">Send</button>
+                   placeholder="Ask me anything..." 
+                   onkeypress="if(event.key === 'Enter') app.sendMessage()">
+            <button class="send-button" onclick="app.sendMessage()">Send</button>
         </div>
     </div>
 
+
     <script>
-        const SYSTEM_PROMPT = `You are an expert AI assistant with advanced reasoning capabilities. Your task is to provide detailed, step-by-step explanations of your thought process. For each step:
+ class OllamaChat {
+    constructor() {
+        this.baseUrl = 'http://127.0.0.1:11434/api';
+        this.model = 'mistral';
+        this.contextLength = 32096;
+        this.timeout = 30000;
+        this.systemContext = {
+            role: "system",
+            content: `
+                You are a helpful and friendly assistant, capable of answering questions with clarity and accuracy while maintaining a conversational, human-like tone. Your goal is to provide detailed, insightful, and relevant answers to the user's queries, tailoring your responses to their needs. Use everyday language that is easy to understand but professional and respectful. Avoid overly technical jargon unless requested and always aim to make the conversation engaging and approachable. Be concise when appropriate but provide enough detail to fully answer the user's question. If clarification is needed, politely ask for more information.
+            `
+        };
+        this.thinking = false;
+        this.messages = [];
+        this.initialize();
+    }
 
-1. Provide a clear, concise title describing the current reasoning phase.
-2. Elaborate on your thought process in the content section.
-3. Decide whether to continue reasoning or provide a final answer.`;
-
-        let messages = [];
-        let thinking = false;
-
-        async function makeApiCall(messages, maxTokens, isFinalAnswer = false) {
-            try {
-                // Create the prompt by combining system prompt and the last message
-                const lastMessage = messages[messages.length - 1].content;
-                const fullPrompt = `${SYSTEM_PROMPT}\n\nUser: ${lastMessage}`;
-
-                const response = await fetch(`http://127.0.0.1:11434/api/generate`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        model: document.getElementById('ollamaModel').textContent,
-                        prompt: fullPrompt,
-                        stream: false,
-                        options: {
-                            num_predict: maxTokens,
-                            temperature: 0.2
-                        }
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+    async initialize() {
+        try {
+            const modelResponse = await fetch(`${this.baseUrl}/tags`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
                 }
+            });
 
-                const data = await response.json();
-                return JSON.parse(data.response);
-            } catch (error) {
-                console.error('API call failed:', error);
-                return {
-                    title: "Error",
-                    content: `Failed to generate ${isFinalAnswer ? 'final answer' : 'step'}. Error: ${error.message}`,
-                    next_action: isFinalAnswer ? undefined : "final_answer"
-                };
-            }
-        }
-
-        function addMessage(content, isUser = false) {
-            const messagesDiv = document.getElementById('messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
-            messageDiv.innerHTML = content;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        }
-
-        async function generateResponse(prompt) {
-            thinking = true;
-            let currentMessages = [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: prompt },
-                { role: "assistant", content: "Thank you! I will now think step by step following my instructions." }
-            ];
-
-            let stepCount = 1;
-
-            while (thinking) {
-                const thinkingDiv = document.createElement('div');
-                thinkingDiv.className = 'thinking';
-                thinkingDiv.textContent = 'Thinking...';
-                document.getElementById('messages').appendChild(thinkingDiv);
-
-                const stepData = await makeApiCall(currentMessages, 300);
-                thinkingDiv.remove();
-
-                const stepContent = `
-                    <div class="step-title">Step ${stepCount}: ${stepData.title}</div>
-                    <div class="step-content">${stepData.content}</div>
-                `;
-                addMessage(stepContent);
-
-                currentMessages.push({ role: "assistant", content: JSON.stringify(stepData) });
-
-                if (stepData.next_action === 'final_answer') {
-                    break;
-                }
-
-                stepCount++;
+            if (!modelResponse.ok) {
+                throw new Error(`API error: ${modelResponse.status}`);
             }
 
-            currentMessages.push({ role: "user", content: "Please provide the final answer based on your reasoning above." });
-            const finalData = await makeApiCall(currentMessages, 200, true);
+            const data = await modelResponse.json();
+            const models = data.models || [];
+
+            if (models.some(m => m.name === this.model)) {
+                console.log(`Using preferred model: ${this.model}`);
+            } else if (models.length > 0) {
+                this.model = models[0].name;
+                console.log(`Preferred model not found. Using available model: ${this.model}`);
+            } else {
+                throw new Error('No models available in Ollama');
+            }
+
+            document.getElementById('ollamaModel').textContent = this.model;
+        } catch (error) {
+            console.error('Initialization failed:', error);
+            this.addMessage('Error: Failed to initialize. Please ensure Ollama is running.', false);
+        }
+    }
+
+    async makeApiCall(prompt) {
+        try {
+            const response = await fetch(`${this.baseUrl}/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: this.model,
+                    prompt: prompt,
+                    stream: false,
+                    options: {
+                        num_predict: 300,
+                        temperature: 0.7
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.response;
+        } catch (error) {
+            console.error('API call failed:', error);
+            throw error;
+        }
+    }
+
+    addMessage(content, isUser = false) {
+        const messagesDiv = document.getElementById('messages');
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
+        messageDiv.innerHTML = content;
+        messagesDiv.appendChild(messageDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    async generateResponse(userMessage) {
+        try {
+            this.thinking = true;
             
-            addMessage(`
-                <div class="step-title">Final Answer</div>
-                <div class="step-content">${finalData.content}</div>
-            `);
+            // Add thinking indicator
+            const thinkingDiv = document.createElement('div');
+            thinkingDiv.className = 'thinking';
+            thinkingDiv.textContent = 'Thinking...';
+            document.getElementById('messages').appendChild(thinkingDiv);
 
-            thinking = false;
-        }
-
-        async function sendMessage() {
-            const input = document.getElementById('userInput');
-            const message = input.value.trim();
+            // Construct the full prompt
+            const fullPrompt = `${this.systemContext.content}\n\nUser: ${userMessage}`;
             
-            if (message && !thinking) {
-                input.value = '';
-                addMessage(message, true);
-                await generateResponse(message);
-            }
+            // Get response from API
+            const response = await this.makeApiCall(fullPrompt);
+            
+            // Remove thinking indicator
+            thinkingDiv.remove();
+            
+            // Add the response to the chat
+            this.addMessage(response, false);
+            
+        } catch (error) {
+            console.error('Error generating response:', error);
+            this.addMessage('Sorry, I encountered an error while generating a response.', false);
+        } finally {
+            this.thinking = false;
         }
+    }
+
+    async sendMessage() {
+        const input = document.getElementById('userInput');
+        const message = input.value.trim();
+        
+        if (message && !this.thinking) {
+            input.value = '';
+            this.addMessage(message, true);
+            await this.generateResponse(message);
+        }
+    }
+}
+
+// Initialize the app
+const app = new OllamaChat();
     </script>
 </body>
 </html>
