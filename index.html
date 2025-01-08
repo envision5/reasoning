@@ -131,7 +131,7 @@
 
 
     <script>
- class OllamaChat {
+class OllamaChat {
     constructor() {
         this.baseUrl = 'http://127.0.0.1:11434/api';
         this.model = 'mistral';
@@ -139,9 +139,26 @@
         this.timeout = 30000;
         this.systemContext = {
             role: "system",
-            content: `
-                You are a helpful and friendly assistant, capable of answering questions with clarity and accuracy while maintaining a conversational, human-like tone. Your goal is to provide detailed, insightful, and relevant answers to the user's queries, tailoring your responses to their needs. Use everyday language that is easy to understand but professional and respectful. Avoid overly technical jargon unless requested and always aim to make the conversation engaging and approachable. Be concise when appropriate but provide enough detail to fully answer the user's question. If clarification is needed, politely ask for more information.
-            `
+            content: `You are an expert AI assistant with advanced reasoning capabilities. Your task is to provide detailed, step-by-step explanations of your thought process. For each step:
+
+1. Provide a clear, concise title describing the current reasoning phase.
+2. Elaborate on your thought process in the content section.
+3. Decide whether to continue reasoning or provide a final answer.
+
+Response Format:
+Use JSON with keys: 'title', 'content', 'next_action' (values: 'continue' or 'final_answer')
+
+Key Instructions:
+- Employ at least 5 distinct reasoning steps.
+- Acknowledge your limitations as an AI and explicitly state what you can and cannot do.
+- Actively explore and evaluate alternative answers or approaches.
+- Critically assess your own reasoning; identify potential flaws or biases.
+- When re-examining, employ a fundamentally different approach or perspective.
+- Utilize at least 3 diverse methods to derive or verify your answer.
+- Incorporate relevant domain knowledge and best practices in your reasoning.
+- Quantify certainty levels for each step and the final conclusion when applicable.
+- Consider potential edge cases or exceptions to your reasoning.
+- Provide clear justifications for eliminating alternative hypotheses.`
         };
         this.thinking = false;
         this.messages = [];
@@ -150,13 +167,7 @@
 
     async initialize() {
         try {
-            const modelResponse = await fetch(`${this.baseUrl}/tags`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-
+            const modelResponse = await fetch(`${this.baseUrl}/tags`);
             if (!modelResponse.ok) {
                 throw new Error(`API error: ${modelResponse.status}`);
             }
@@ -180,7 +191,7 @@
         }
     }
 
-    async makeApiCall(prompt) {
+    async makeApiCall(prompt, isFinalAnswer = false) {
         try {
             const response = await fetch(`${this.baseUrl}/generate`, {
                 method: 'POST',
@@ -192,8 +203,8 @@
                     prompt: prompt,
                     stream: false,
                     options: {
-                        num_predict: 300,
-                        temperature: 0.7
+                        num_predict: isFinalAnswer ? 200 : 300,
+                        temperature: 0.2
                     }
                 })
             });
@@ -203,18 +214,35 @@
             }
 
             const data = await response.json();
-            return data.response;
+            return JSON.parse(data.response);
         } catch (error) {
             console.error('API call failed:', error);
-            throw error;
+            return {
+                title: "Error",
+                content: `Failed to generate ${isFinalAnswer ? 'final answer' : 'step'}. Error: ${error.message}`,
+                next_action: isFinalAnswer ? undefined : "final_answer"
+            };
         }
     }
 
-    addMessage(content, isUser = false) {
+    addMessage(content, isUser = false, isStep = false) {
         const messagesDiv = document.getElementById('messages');
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
-        messageDiv.innerHTML = content;
+        
+        if (isStep) {
+            const stepTitle = document.createElement('div');
+            stepTitle.className = 'step-title';
+            stepTitle.textContent = content.title;
+            messageDiv.appendChild(stepTitle);
+            
+            const stepContent = document.createElement('div');
+            stepContent.innerHTML = content.content.replace(/\n/g, '<br>');
+            messageDiv.appendChild(stepContent);
+        } else {
+            messageDiv.innerHTML = content;
+        }
+        
         messagesDiv.appendChild(messageDiv);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
     }
@@ -222,25 +250,52 @@
     async generateResponse(userMessage) {
         try {
             this.thinking = true;
-            
+            let stepCount = 1;
+            let messages = [
+                this.systemContext,
+                { role: "user", content: userMessage },
+                { role: "assistant", content: "I will now think step by step following my instructions." }
+            ];
+
             // Add thinking indicator
             const thinkingDiv = document.createElement('div');
             thinkingDiv.className = 'thinking';
             thinkingDiv.textContent = 'Thinking...';
             document.getElementById('messages').appendChild(thinkingDiv);
 
-            // Construct the full prompt
-            const fullPrompt = `${this.systemContext.content}\n\nUser: ${userMessage}`;
-            
-            // Get response from API
-            const response = await this.makeApiCall(fullPrompt);
-            
+            while (true) {
+                const fullPrompt = messages.map(m => `${m.role}: ${m.content}`).join('\n\n');
+                const stepData = await this.makeApiCall(fullPrompt);
+                
+                // Add the step to display
+                this.addMessage({ 
+                    title: `Step ${stepCount}: ${stepData.title}`, 
+                    content: stepData.content 
+                }, false, true);
+
+                messages.push({ role: "assistant", content: JSON.stringify(stepData) });
+
+                if (stepData.next_action === 'final_answer') {
+                    break;
+                }
+
+                stepCount++;
+            }
+
+            // Generate final answer
+            messages.push({ role: "user", content: "Please provide the final answer based on your reasoning above." });
+            const finalPrompt = messages.map(m => `${m.role}: ${m.content}`).join('\n\n');
+            const finalData = await this.makeApiCall(finalPrompt, true);
+
             // Remove thinking indicator
             thinkingDiv.remove();
-            
-            // Add the response to the chat
-            this.addMessage(response, false);
-            
+
+            // Add the final answer
+            this.addMessage({ 
+                title: "Final Answer", 
+                content: finalData.content 
+            }, false, true);
+
         } catch (error) {
             console.error('Error generating response:', error);
             this.addMessage('Sorry, I encountered an error while generating a response.', false);
